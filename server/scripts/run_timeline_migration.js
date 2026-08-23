@@ -1,3 +1,10 @@
+// SUPERSEDED by scripts/backfillArcs.js. This script forced the Politics-
+// only regex/Jaccard pre-save hook in src/models/News.js to recompute event
+// tags; that hook was removed when the Udaan MinHash/LSH/Union-Find dedup
+// pipeline took over arc assignment at ingest time (M1, spec §6.2/§6.3).
+// Kept only as a pattern reference — running this now just re-saves each
+// document with no hook left to do anything.
+
 const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });

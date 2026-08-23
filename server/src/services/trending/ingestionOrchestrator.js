@@ -23,6 +23,7 @@ const { summarizeWithGemini, summarizeArticlesWithGemini, callGemini } = require
 const { resolveBestImage } = require('./imageResolver');
 const { getDeskAuthorId } = require('./deskAuthors');
 const { meetsQualityBar } = require('./contentQuality');
+const udaan = require('../udaan');
 
 // ── Python Pulse Analyzer helper ─────────────────────────────────────────────
 
@@ -405,14 +406,32 @@ const ingestCategoryFeeds = async (issues) => {
         continue;
       }
 
-      const batch = articles.slice(0, 3);
-      console.log(`[Category Feed] Processing ${batch.length} articles for ${feed.category}`);
+      // Near-duplicate filter (MinHash + banded LSH) + story-arc clustering
+      // (Union-Find), before any Gemini call — syndicated re-reporting of
+      // the same story never reaches paid synthesis. See
+      // server/src/services/udaan/index.js and spec §6.2/§6.3.
+      const { survivors, duplicates } = await udaan.filterDuplicates(articles, { category: feed.category });
 
-      for (const article of batch) {
+      for (const dup of duplicates.filter((d) => d.attachTo.type === 'existing')) {
+        try {
+          await udaan.attachAsSource(dup.attachTo.id, dup.article);
+          console.log(`[Category Feed] Merged duplicate "${dup.article.title}" into existing arc ${dup.attachTo.id} (${feed.category}) — no Gemini call.`);
+        } catch (attachErr) {
+          console.warn(`[Category Feed] Failed to attach duplicate source: ${attachErr.message}`);
+        }
+      }
+
+      const batch = survivors.slice(0, 3);
+      console.log(`[Category Feed] Processing ${batch.length} articles for ${feed.category} (${articles.length - survivors.length} duplicates filtered)`);
+
+      const savedIdByBatchIndex = new Map();
+
+      for (const survivor of batch) {
+        const article = survivor.article;
         try {
           console.log(`[Category Feed] Generating analysis for: "${article.title}" (${feed.category})`);
           const articleData = await summarizeArticlesWithGemini(article.title, [article]);
-          
+
           // Skip storing this category article if the synthesis failed and returned fallback,
           // or if the generated content is too thin to publish (scaled/low-value content guard).
           if (articleData.isFallback) {
@@ -464,18 +483,32 @@ const ingestCategoryFeeds = async (issues) => {
 
           const setOnInsertFields = { interestOverTime: [] };
 
-          const record = await News.findOneAndUpdate(
+          let record = await News.findOneAndUpdate(
             { primaryLink: article.link },
             { $set: setFields, $setOnInsert: setOnInsertFields },
             { upsert: true, new: true, setDefaultsOnInsert: true },
           );
 
+          record = await udaan.registerArticle(record, article);
+
+          savedIdByBatchIndex.set(survivor.index, record._id);
           console.log(`[MongoDB] ✅ Stored category article: "${record.title}" (ID: ${record._id}) in ${feed.category}`);
           records.push(record);
         } catch (artErr) {
           const msg = `Failed to process article "${article.title}" in ${feed.id}: ${artErr.message}`;
           console.error(msg);
           issues.push(msg);
+        }
+      }
+
+      for (const dup of duplicates.filter((d) => d.attachTo.type === 'pending')) {
+        const targetId = savedIdByBatchIndex.get(dup.attachTo.index);
+        if (!targetId) continue; // representative didn't make the top-3 cut or failed to save — dropped, same as today's behaviour for excess articles
+        try {
+          await udaan.attachAsSource(targetId, dup.article);
+          console.log(`[Category Feed] Merged within-batch duplicate "${dup.article.title}" into ${targetId} (${feed.category}).`);
+        } catch (attachErr) {
+          console.warn(`[Category Feed] Failed to attach pending duplicate source: ${attachErr.message}`);
         }
       }
     } catch (error) {

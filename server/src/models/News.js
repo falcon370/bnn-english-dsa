@@ -87,134 +87,17 @@ const newsSchema = new mongoose.Schema(
     generatedAt: { type: Date, default: Date.now },
     // Pulse Analyzer — populated for Bolta Hai Bharat articles
     pulseAnalysis: { type: pulseAnalysisSchema, default: null },
+    // Udaan retrieval layer (docs/UDAAN_VERTICAL_SPEC.md) — populated at
+    // ingest time by server/src/services/udaan. select:false keeps these
+    // off every existing route's response by default.
+    embedding: { type: [Number], default: undefined, select: false }, // 384-d MiniLM, populated in M2
+    minhashSignature: { type: [Number], default: undefined, select: false }, // 128 uint32 values, populated in M1
+    arcId: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
+    isArcRepresentative: { type: Boolean, default: true },
+    arcUpdateCount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
-
-newsSchema.pre('save', async function () {
-  // Only process if it is a Politics article and status is published
-  if (this.category && this.category.toLowerCase() === 'politics' && this.status === 'published') {
-    try {
-      const News = this.constructor;
-      
-      // Only find other published politics articles from the 30-day window relative to this article
-      const articleDate = this.publishedAt || this.createdAt || new Date();
-      const thirtyDaysAgo = new Date(articleDate.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const thirtyDaysAhead = new Date(articleDate.getTime() + 30 * 24 * 60 * 60 * 1000);
-      
-      const query = { 
-        status: 'published', 
-        category: /politics/i,
-        publishedAt: { $gte: thirtyDaysAgo, $lte: thirtyDaysAhead }
-      };
-      if (!this.isNew) {
-        query._id = { $ne: this._id };
-      }
-      
-      const otherArticles = await News.find(query).select('title summary tags').lean();
-      
-      const extractCapitals = (text) => {
-        if (!text) return [];
-        const matches = text.match(/\b[A-Z][a-zA-Z0-9']+(?:\s+[A-Z][a-zA-Z0-9']+)*\b/g) || [];
-        return matches.filter(m => !['The', 'A', 'An', 'And', 'In', 'On', 'At', 'To', 'For', 'With', 'By', 'Of', 'Is', 'Are', 'Was', 'Were', 'Trending'].includes(m));
-      };
-
-      const cleanWords = (text) => text.toLowerCase()
-        .replace(/[^\w\s]/g, '')
-        .split(/\s+/)
-        .filter(w => w.length > 3 && !['with', 'about', 'from', 'that', 'this', 'their', 'they', 'them', 'after', 'before', 'says', 'will', 'over', 'trending'].includes(w));
-
-      const genericTerms = new Set([
-        'politics', 'political', 'news', 'india', 'indian', 'government', 'state', 'centre', 'central', 
-        'minister', 'ministry', 'pm', 'prime', 'mp', 'mla', 'assembly', 'election', 'elections', 'poll', 
-        'polls', 'vote', 'votes', 'voting', 'party', 'parties', 'bjp', 'congress', 'tmc', 'dmk', 'aap', 
-        'cpi', 'cpim', 'ncp', 'sp', 'bsp', 'rjd', 'jdu', 'nda', 'upa', 'modi', 'gandhi', 'rahul', 
-        'amit', 'shah', 'kejriwal', 'mamata', 'banerjee', 'stalin', 'bihar', 'delhi', 'kerala', 'bengal', 
-        'maharashtra', 'up', 'tamil', 'nadu', 'karnataka', 'punjab', 'haryana', 'gujarat', 'rajasthan', 
-        'madhya', 'pradesh', 'andhra', 'telangana', 'odisha', 'assam', 'kashmir', 'srinagar', 'jammu', 
-        'court', 'supreme', 'high', 'police', 'chief', 'leader', 'leadership', 'seat', 'seats', 
-        'constituency', 'constituencies', 'candidate', 'candidates', 'union', 'territory', 'national',
-        'president', 'governor', 'speaker', 'house', 'parliament', 'parliamentary', 'lok', 'sabha', 'rajya'
-      ]);
-
-      const sEntities = extractCapitals(this.title + ' ' + (this.summary || ''));
-      const sWords = cleanWords(this.title + ' ' + (this.summary || ''));
-      const sTags = (this.tags || []).map(t => t.toLowerCase()).filter(t => t !== 'politics');
-
-      let bestMatch = null;
-      let highestScore = 0;
-
-      for (const article of otherArticles) {
-        let score = 0;
-        
-        // 1. Tag match (excluding politics)
-        const aTags = (article.tags || []).map(t => t.toLowerCase()).filter(t => t !== 'politics');
-        const sharedTags = aTags.filter(t => sTags.includes(t));
-        if (sharedTags.length > 0) {
-          score += sharedTags.length * 5.0;
-        }
-
-        // 2. Keyword match using Jaccard similarity
-        const aWords = cleanWords(article.title || '');
-        const sharedWords = aWords.filter(w => sWords.includes(w));
-        const unionWords = Array.from(new Set([...sWords, ...aWords]));
-        const wordJaccard = unionWords.length > 0 ? sharedWords.length / unionWords.length : 0;
-
-        // 3. Entity match using Jaccard similarity
-        const aEntities = extractCapitals(article.title + ' ' + (article.summary || ''));
-        const sharedEntities = aEntities.filter(e => sEntities.includes(e));
-        const unionEntities = Array.from(new Set([...sEntities, ...aEntities]));
-        const entityJaccard = unionEntities.length > 0 ? sharedEntities.length / unionEntities.length : 0;
-
-        // Ensure we only group if there is at least one overlapping non-generic term
-        const allSharedLower = [...sharedWords, ...sharedEntities.map(e => e.toLowerCase())];
-        const hasSpecific = allSharedLower.some(w => !genericTerms.has(w));
-
-        if (hasSpecific) {
-          score += wordJaccard * 4.0;
-          score += entityJaccard * 4.0;
-          
-          // Bonus for matching specific terms
-          const specificSharedCount = allSharedLower.filter(w => !genericTerms.has(w)).length;
-          score += specificSharedCount * 1.0;
-        }
-
-        if (score > highestScore) {
-          highestScore = score;
-          bestMatch = article;
-        }
-      }
-
-      // Check if we have a match above the threshold (3.0)
-      if (highestScore >= 3.0 && bestMatch && bestMatch.tags && bestMatch.tags.length > 0) {
-        const eventTag = bestMatch.tags[0];
-        if (!this.tags.includes(eventTag)) {
-          this.tags = [eventTag, ...this.tags.filter(t => t !== eventTag)];
-        }
-      } else {
-        // Create a new event tag based on the slug of the title
-        const slug = this.title
-          .toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, '')
-          .replace(/\s+/g, '-')
-          .slice(0, 50)
-          .replace(/-+$/, ''); // clean trailing hyphens
-        
-        if (!this.tags.includes(slug)) {
-          this.tags = [slug, ...this.tags];
-        }
-      }
-
-      // Ensure 'politics' is also in the tags
-      if (!this.tags.includes('politics')) {
-        this.tags.push('politics');
-      }
-
-    } catch (err) {
-      console.error('Error in pre-save timeline hook:', err);
-    }
-  }
-});
 
 // Indexes for optimized query execution
 newsSchema.index({ status: 1, publishedAt: -1 });

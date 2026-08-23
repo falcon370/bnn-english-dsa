@@ -10,7 +10,8 @@
     "image:index": "node scripts/createImageVectorIndex.js",
     "image:search": "node scripts/searchImages.js",
     "udaan:fixtures": "node scripts/exportUdaanFixture.js",
-    "bench": "node bench/annBench.js"
+    "udaan:backfill": "node scripts/backfillArcs.js",
+    "bench": "node bench/annBench.js && node bench/dedupBench.js"
   },
   "keywords": [],
   "author": "",

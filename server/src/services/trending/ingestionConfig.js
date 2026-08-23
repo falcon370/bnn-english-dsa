@@ -43,6 +43,7 @@ const CATEGORY_FEEDS = [
   { id: 'business',        topic: 'Boardroom Briefing',   query: 'India business markets economy',            category: 'Business',         tags: ['business', 'markets'] },
   { id: 'bolta-hai-bharat', topic: 'Bolta Hai Bharat',    query: 'India public opinion social issues debate', category: 'Bolta Hai Bharat', tags: ['opinion', 'social', 'india'] },
   { id: 'editorial',       topic: 'Editorial Desk',       query: 'India editorial opinion analysis commentary', category: 'Editorial',      tags: ['editorial', 'opinion', 'analysis'] },
+  { id: 'udaan',           topic: 'Udaan',                query: 'India innovation grassroots founder social entrepreneur', category: 'Udaan', tags: ['innovation', 'motivation', 'grit'] },
 ];
 
 // Google Trends category ID → human-readable name

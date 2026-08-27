@@ -103,11 +103,14 @@ const fetchTopicArticles = async (topic, limit = 6, timeRange = 'qdr:h24') => {
  * Fetch articles for a pre-defined category feed (Google Search with News tab & date sorting).
  */
 const fetchCategoryArticles = async (feed, limit = 8) => {
+  const timeRange = feed.timeRange || 'qdr:h24';
+  const freshnessHours = feed.freshnessHours || 36;
+
   const response = await serpRequest({
     engine: 'google',
     tbm: 'nws',
     hl: feed.lang || 'en', gl: feed.country || 'in',
-    q: feed.query, num: limit, tbs: 'qdr:h24,sbd:1',
+    q: feed.query, num: limit, tbs: `${timeRange},sbd:1`,
   });
 
   const articles = (response.news_results || [])
@@ -119,7 +122,7 @@ const fetchCategoryArticles = async (feed, limit = 8) => {
       thumbnail:   item.thumbnail || null,
       publishedAt: item.date || item.published_at || null,
     }))
-    .filter(a => Boolean(a.link) && (isFresh(a.publishedAt, 36) || !a.publishedAt));
+    .filter(a => Boolean(a.link) && (isFresh(a.publishedAt, freshnessHours) || !a.publishedAt));
 
   articles._serpApiResponse = response;
   return articles;

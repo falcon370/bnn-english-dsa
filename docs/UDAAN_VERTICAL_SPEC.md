@@ -123,8 +123,71 @@ needed. Registration is one entry in `CATEGORY_FEEDS` in
   query: 'India innovation grassroots founder social entrepreneur',
   category: 'Udaan',
   tags: ['innovation', 'motivation', 'grit'],
+  timeRange: 'qdr:d7',       // wider than other feeds' default 24h — see §4.3
+  freshnessHours: 168,
 }
 ```
+
+### 4.3 How a story actually gets into the tab
+
+Two separate stages — an ingestion (write) path that runs on a schedule, and a
+serving (read) path that runs on every page load.
+
+**Stage 1 — ingestion.** The `query` string above is the entire "what counts as
+Udaan" logic; there is no topic classifier beyond it. On every scheduled/triggered
+run, `ingestCategoryFeeds` (`ingestionOrchestrator.js`) does, for the Udaan entry
+same as every other `CATEGORY_FEEDS` entry:
+
+1. `fetchCategoryArticles(feed)` (`serpApiClient.js`) — hits SerpApi's Google News
+   tab with that query (`gl=in`, sorted by date), returns up to 8 raw articles.
+   Udaan uses a 7-day window (`timeRange`/`freshnessHours` above) instead of the
+   other feeds' 24h default — a niche topic on a 24h window returned a thin
+   candidate pool, and widening it was a one-line fix with no new data source.
+   If `UDAAN_RSS_ENABLED=true` (off by default), `fetchUdaanRssArticles()`
+   (`udaanRssFeeds.js`) also pulls candidates from The Better India's and
+   YourStory's RSS feeds, normalized to the same article shape and merged in
+   before dedup — see §4.3.1.
+2. `udaan.filterDuplicates(articles, {category})` — MinHash/LSH/Union-Find dedup
+   (§5), *before* anything else. Splits into survivors (new stories) and duplicates
+   (merged into an existing article's sources, dropped from further processing).
+3. Top 3 survivors each go through `summarizeArticlesWithGemini` (title/summary/
+   content synthesis) and `resolveBestImage`, then get saved via
+   `News.findOneAndUpdate({primaryLink}, ...)` with `status:'published',
+   category:'Udaan'`.
+4. `udaan.registerArticle(record, article)` — MinHash signature, `arcId`/
+   `isArcRepresentative`, and embedding (§6) all get set here.
+
+Triggered by: the existing cron schedule (`refreshCategoryFeeds()`, same cadence as
+the other 8 verticals), a manual admin call (`POST /api/news/trigger-ingestion`), or
+— for testing a single feed in isolation — `npm run demo:trigger-udaan`.
+
+**Stage 2 — serving.** `GET /api/news?category=udaan` → `getPublishedNews`
+(`newsController.js`) → `News.find({status:'published', category:'Udaan'})
+.sort({publishedAt:-1})`, paginated. No ranking, no filtering beyond that — plain
+newest-first over whatever Stage 1 has accumulated so far.
+
+So what shows up in the tab, at any point in time, is exactly: whatever SerpApi
+(and, if enabled, RSS) returns for that one query string, that survived dedup, and
+that got a good-enough Gemini synthesis — accumulated across however many
+ingestion runs have happened.
+
+#### 4.3.1 RSS supplement — flag-gated, off by default
+
+`server/src/services/trending/udaanRssFeeds.js`, `UDAAN_RSS_ENABLED=true` to
+enable. Pulls from `https://www.thebetterindia.com/feed/` and
+`https://yourstory.com/feed`, normalized to the exact shape
+`fetchCategoryArticles()` returns, so they flow through the same
+dedup → Gemini → publish pipeline as SerpApi results, with per-feed error
+isolation (one feed failing doesn't drop the other).
+
+Why flag-gated rather than always-on: The Better India and YourStory are
+themselves the incumbents named in the vertical's own business case (§2.1), so
+pulling from their RSS feeds is closer to aggregating their coverage than
+independent discovery — a different flavor of "sourcing" worth being able to turn
+off if it doesn't feel right, without touching code. Also: YourStory in particular
+skews toward general startup/funding/IPO news, not exclusively motivational
+human-interest stories — the flag makes that a deliberate, reversible choice
+rather than a silent default.
 
 ---
 

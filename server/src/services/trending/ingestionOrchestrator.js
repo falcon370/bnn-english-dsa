@@ -19,6 +19,7 @@ const pathModule = require('path');
 
 const { CATEGORY_FEEDS, INGESTION_STATUS_KEY, CONFIG_REGULAR } = require('./ingestionConfig');
 const { fetchTrendingTopics, fetchSpecificPoliticalTopics, fetchSpecificWorldTopics, fetchTopicArticles, fetchCategoryArticles, fetchWeeklyTopTrendingTopics } = require('./serpApiClient');
+const { fetchUdaanRssArticles } = require('./udaanRssFeeds');
 const { summarizeWithGemini, summarizeArticlesWithGemini, callGemini } = require('./geminiClient');
 const { resolveBestImage } = require('./imageResolver');
 const { getDeskAuthorId } = require('./deskAuthors');
@@ -399,6 +400,16 @@ const ingestCategoryFeeds = async (issues, feeds = CATEGORY_FEEDS) => {
   for (const feed of feeds) {
     try {
       const articles = await fetchCategoryArticles(feed).catch(e => { throw new Error(e.message || 'Category fetch failed'); });
+
+      // Optional RSS supplement, Udaan only, off unless UDAAN_RSS_ENABLED=true
+      // (see udaanRssFeeds.js). Merged in before dedup so cross-source
+      // duplicates (SerpApi and an RSS feed covering the same story) get
+      // caught by the same MinHash/LSH pass as everything else.
+      if (feed.id === 'udaan') {
+        const rssArticles = await fetchUdaanRssArticles();
+        if (rssArticles.length) articles.push(...rssArticles);
+      }
+
       if (!articles.length) {
         const warn = `No Google News articles returned for ${feed.id}`;
         console.warn(warn);

@@ -43,7 +43,11 @@ const CATEGORY_FEEDS = [
   { id: 'business',        topic: 'Boardroom Briefing',   query: 'India business markets economy',            category: 'Business',         tags: ['business', 'markets'] },
   { id: 'bolta-hai-bharat', topic: 'Bolta Hai Bharat',    query: 'India public opinion social issues debate', category: 'Bolta Hai Bharat', tags: ['opinion', 'social', 'india'] },
   { id: 'editorial',       topic: 'Editorial Desk',       query: 'India editorial opinion analysis commentary', category: 'Editorial',      tags: ['editorial', 'opinion', 'analysis'] },
-  { id: 'udaan',           topic: 'Udaan',                query: 'India innovation grassroots founder social entrepreneur', category: 'Udaan', tags: ['innovation', 'motivation', 'grit'] },
+  // Wider timeRange/freshnessHours than the other feeds (24h): a niche
+  // "innovation/founder/grit" query returns a thin candidate pool on a
+  // 24h window (see docs/UDAAN_VERTICAL_SPEC.md §4.3) — 7 days multiplies
+  // it without adding a new data source.
+  { id: 'udaan',           topic: 'Udaan',                query: 'India innovation grassroots founder social entrepreneur', category: 'Udaan', tags: ['innovation', 'motivation', 'grit'], timeRange: 'qdr:d7', freshnessHours: 168 },
 ];
 
 // Google Trends category ID → human-readable name

@@ -393,10 +393,10 @@ const runTrendingIngestion = async (config = CONFIG_REGULAR) => {
 
 // ── Category feeds pipeline ────────────────────────────────────
 
-const ingestCategoryFeeds = async (issues) => {
+const ingestCategoryFeeds = async (issues, feeds = CATEGORY_FEEDS) => {
   const records = [];
 
-  for (const feed of CATEGORY_FEEDS) {
+  for (const feed of feeds) {
     try {
       const articles = await fetchCategoryArticles(feed).catch(e => { throw new Error(e.message || 'Category fetch failed'); });
       if (!articles.length) {
@@ -1441,5 +1441,5 @@ ${negQuotes || '> No critical comments identified.'}
   return record;
 };
 
-module.exports = { runTrendingIngestion, refreshCategoryFeeds, generateNewsFromTopic, generateDailyBoltaHaiBharat, generateDailyBoltaHaiBharatFromTrending };
+module.exports = { runTrendingIngestion, refreshCategoryFeeds, ingestCategoryFeeds, generateNewsFromTopic, generateDailyBoltaHaiBharat, generateDailyBoltaHaiBharatFromTrending };
 

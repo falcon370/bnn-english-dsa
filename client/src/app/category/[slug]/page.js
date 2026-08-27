@@ -74,6 +74,10 @@ const CATEGORY_META = {
     label: 'Celebrity',
     description: 'Celebrity news, gossip, and lifestyle updates from Bollywood and beyond.',
   },
+  udaan: {
+    label: 'Udaan',
+    description: 'Innovation, founder, and grit stories — constructive news about the people building India forward.',
+  },
   'bolta-hai-bharat': {
     label: 'Bolta Hai Bharat',
     description: 'Opinion, ground-level reporting, and stories that reflect the voice of Bharat.',
@@ -93,6 +97,7 @@ const CATEGORY_COLORS = {
   Politics: 'text-amber-600',
   Sports: 'text-emerald-600',
   World: 'text-violet-600',
+  Udaan: 'text-rose-600',
   Celebrity: 'text-pink-600',
   'Bolta Hai Bharat': 'text-orange-600',
   Editorial: 'text-teal-600',

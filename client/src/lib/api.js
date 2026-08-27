@@ -18,7 +18,7 @@ export const getPublishedNews = () => api.get('/news');
 export const getCategoryNews = (category, page = 1, limit = 15) =>
   api.get('/news', { params: { category, page, limit } });
 export const searchNews = (q, page = 1, limit = 15) =>
-  api.get('/news', { params: { q, page, limit } });
+  api.get('/news', { params: { q, page, limit, mode: 'semantic' } });
 export const getNewsById = (id) => api.get(`/news/${id}`);
 export const getRelatedNews = (id, limit = 5) => api.get(`/news/${id}/related`, { params: { limit } });
 export const getTrendingNews = () => api.get('/trending');

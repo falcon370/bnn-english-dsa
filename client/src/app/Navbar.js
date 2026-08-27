@@ -14,6 +14,7 @@ const categories = [
   { label: 'Sports', href: '/category/sports', exact: false },
   { label: 'Entertainment', href: '/category/entertainment', exact: false },
   // { label: 'Celebrity', href: '/category/celebrity', exact: false },
+  { label: 'Udaan', href: '/category/udaan', exact: false },
   { label: 'Bolta Hai Bharat', href: '/category/bolta-hai-bharat', exact: false },
   { label: 'Editorial', href: '/category/editorial', exact: false },
   { label: 'E-Paper', href: '/epaper', exact: true },

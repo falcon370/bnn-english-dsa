@@ -4,6 +4,7 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
+    "dev:demo": "nodemon scripts/runDemoServer.js",
     "start": "node src/index.js",
     "test": "node --test \"tests/**/*.test.js\"",
     "image:ingest": "node scripts/ingestCsv.js",
@@ -13,7 +14,12 @@
     "udaan:backfill": "node scripts/backfillArcs.js",
     "udaan:backfill:embeddings": "node scripts/backfillEmbeddings.js",
     "udaan:index:news": "node scripts/createNewsVectorIndex.js",
-    "bench": "node bench/annBench.js && node bench/dedupBench.js"
+    "bench": "node bench/annBench.js && node bench/dedupBench.js",
+    "demo:seed": "node scripts/seedDemoArticles.js",
+    "demo:reset": "node scripts/resetDemoDb.js",
+    "demo:trigger-udaan": "node scripts/triggerUdaanIngestion.js",
+    "demo:backfill-embeddings": "node scripts/withDemoEnv.js scripts/backfillEmbeddings.js",
+    "demo:index-news": "node scripts/withDemoEnv.js scripts/createNewsVectorIndex.js"
   },
   "keywords": [],
   "author": "",

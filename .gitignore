@@ -21,7 +21,6 @@ venv/
 .venv-uv/
 __pycache__/
 epaper-service/output/
-docs/
 epaper-service/output_local/
 epaper-service/output_test/
 sentiment_analysis2/venv/

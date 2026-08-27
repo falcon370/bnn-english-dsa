@@ -131,7 +131,25 @@ Runs one real ingestion pass for **only** the Udaan feed (not all 8 categories) 
 genuine SerpApi fetch → dedup → Gemini synthesis → image resolution → embedding.
 Requires valid `SERPAPI_KEYS` and `GOOGLE_API_KEYS` in `server/.env`. Safe to
 re-run repeatedly to test dedup catching real syndicated duplicates over time — it
-still only ever writes to `bnn_demo`.
+still only ever writes to `bnn_demo`. Also picks up the widened 7-day fetch window
+(§4.3 of the spec) automatically — no flag needed for that part.
+
+#### With the RSS supplement turned on
+
+Off by default. To also pull candidates from The Better India + YourStory's RSS
+feeds for this one run, set the env var **in the same terminal session**, before
+running the script:
+
+```powershell
+cd server
+$env:UDAAN_RSS_ENABLED = "true"
+node scripts/triggerUdaanIngestion.js
+```
+
+`$env:UDAAN_RSS_ENABLED` only lasts for that PowerShell session — close the
+terminal, or run `Remove-Item Env:\UDAAN_RSS_ENABLED`, to go back to off. There's
+no `npm run demo:trigger-udaan` variant with the flag pre-set — set the env var
+first, then call the script directly as above.
 
 ### Starting over
 
@@ -167,6 +185,7 @@ Run from `server/` unless noted.
 | `npm run dev:demo` | Start the backend against `bnn_demo` | — |
 | `npm run demo:seed` | Seed 4 synthetic articles through the real dedup pipeline | Free (local embedding calls only) |
 | `npm run demo:trigger-udaan` | Real ingestion, Udaan feed only | SerpApi + Gemini |
+| `$env:UDAAN_RSS_ENABLED="true"; node scripts/triggerUdaanIngestion.js` | Same, plus The Better India + YourStory RSS | SerpApi + Gemini (RSS itself is free) |
 | `npm run demo:backfill-embeddings` | Embed any `bnn_demo` articles missing one | Free (local) |
 | `npm run demo:index-news` | Create/recreate the Atlas vector index on `bnn_demo` | — |
 | `npm run demo:reset` | Delete all `bnn_demo` articles | — |
@@ -187,6 +206,11 @@ Run from `server/` unless noted.
 - **`503 ... high demand` from Gemini** — transient; `geminiClient.js` already
   falls back through the model chain (`gemini-3.5-flash` → `gemini-3.1-flash-lite`
   → `gemini-2.5-flash`) and retries automatically.
+- **`Cannot find module '...\scripts\triggerUdaanIngestion.js'`** (or any other
+  `scripts/*.js` command) — you're running the command from the repo root instead
+  of `server/`. Every `npm run demo:*` / `node scripts/*.js` command in this guide
+  assumes you've already run `cd server` in that terminal. Either `cd server` first,
+  or prefix the path: `node server/scripts/triggerUdaanIngestion.js`.
 - **Port already in use / stale data showing up** — an old `node` process from a
   previous run may still be bound to the port. Check with
   `netstat -ano | findstr :5000` (or `:3000`/`:8000`) and `taskkill /PID <pid> /F`

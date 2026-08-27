@@ -11,6 +11,8 @@
     "image:search": "node scripts/searchImages.js",
     "udaan:fixtures": "node scripts/exportUdaanFixture.js",
     "udaan:backfill": "node scripts/backfillArcs.js",
+    "udaan:backfill:embeddings": "node scripts/backfillEmbeddings.js",
+    "udaan:index:news": "node scripts/createNewsVectorIndex.js",
     "bench": "node bench/annBench.js && node bench/dedupBench.js"
   },
   "keywords": [],

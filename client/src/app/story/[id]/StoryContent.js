@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getNewsById, getPublishedNews, addComment, deleteComment, getStoryFactCheck } from '@/lib/api';
+import { getNewsById, getPublishedNews, getRelatedNews, addComment, deleteComment, getStoryFactCheck } from '@/lib/api';
 import { makeStorySlug, extractIdFromParam } from '@/lib/slug';
 import { useAuthContext } from '@/context/AuthContext';
 import Reactions from '@/components/Reactions';
@@ -358,13 +358,22 @@ export default function StoryContent({ initialStory, allPublishedNews }) {
     return () => { cancelled = true; };
   }, [storyId, initialStory]);
 
-  const relatedNews = useMemo(() => {
-    if (!story) return [];
-    const category = story.category || story.tags?.[0] || '';
-    return allNews
-      .filter(n => n._id !== story._id && (n.category || n.tags?.[0] || '').toLowerCase() === category.toLowerCase())
-      .slice(0, 5);
-  }, [story, allNews]);
+  // Related Stories — served by the semantic /news/:id/related endpoint
+  // (Atlas $vectorSearch over article embeddings), which itself falls back
+  // to a plain category match server-side if the story has no embedding
+  // yet, so this is never worse than the old client-side category filter.
+  const [relatedNews, setRelatedNews] = useState([]);
+  useEffect(() => {
+    if (!story?._id) {
+      setRelatedNews([]);
+      return undefined;
+    }
+    let cancelled = false;
+    getRelatedNews(story._id, 5)
+      .then((res) => { if (!cancelled) setRelatedNews(res.data?.related || []); })
+      .catch(() => { if (!cancelled) setRelatedNews([]); });
+    return () => { cancelled = true; };
+  }, [story?._id]);
 
   const moreYouCanRead = useMemo(() => {
     if (!story || !allNews.length) return [];

@@ -10,6 +10,7 @@
  */
 
 const News = require('../../models/News');
+const { EmbeddingClient } = require('../embeddingClient');
 const { computeSignature, estimateJaccard } = require('./minhash');
 const { LSHIndex, DEFAULT_BANDS, DEFAULT_ROWS } = require('./lshIndex');
 const { UnionFind } = require('./unionFind');
@@ -154,17 +155,30 @@ const attachAsSource = async (newsId, article) => {
 
 /**
  * Persists the MinHash signature + arc metadata on a newly-saved
- * representative article. In M1 every survivor is its own arc
- * (arcId = its own _id) — genuine multi-document arcs (follow-up stories
- * sharing an arc) are a later, separate feature.
+ * representative article, and embeds its final synthesized title+summary
+ * for semantic search / related-stories (served via MongoDB Atlas
+ * $vectorSearch — see scripts/createNewsVectorIndex.js). In M1 every
+ * survivor is its own arc (arcId = its own _id) — genuine multi-document
+ * arcs (follow-up stories sharing an arc) are a later, separate feature.
+ *
+ * Runs for every CATEGORY_FEEDS vertical, not just Udaan, so embeddings
+ * end up populated sitewide as ingestion runs. Embedding failure (service
+ * down) is non-fatal — the article still gets its dedup/arc metadata and
+ * simply has no embedding until a later backfill run picks it up.
  */
 const registerArticle = async (record, article) => {
   const signature = computeSignature(buildArticleText(article));
-  return News.findByIdAndUpdate(
-    record._id,
-    { $set: { minhashSignature: signature, arcId: record._id, isArcRepresentative: true } },
-    { new: true },
-  );
+  const updateFields = { minhashSignature: signature, arcId: record._id, isArcRepresentative: true };
+
+  try {
+    const embeddingClient = new EmbeddingClient();
+    const text = `${record.title || ''}\n\n${record.summary || ''}`.trim();
+    updateFields.embedding = await embeddingClient.embed(text);
+  } catch (err) {
+    console.warn(`[Udaan] Embedding failed for "${record.title}" (${record._id}): ${err.message}`);
+  }
+
+  return News.findByIdAndUpdate(record._id, { $set: updateFields }, { new: true });
 };
 
 module.exports = {

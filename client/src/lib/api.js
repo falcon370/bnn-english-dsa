@@ -20,6 +20,7 @@ export const getCategoryNews = (category, page = 1, limit = 15) =>
 export const searchNews = (q, page = 1, limit = 15) =>
   api.get('/news', { params: { q, page, limit } });
 export const getNewsById = (id) => api.get(`/news/${id}`);
+export const getRelatedNews = (id, limit = 5) => api.get(`/news/${id}/related`, { params: { limit } });
 export const getTrendingNews = () => api.get('/trending');
 export const getTrendingStatus = () => api.get('/trending/status');
 export const refreshTrending = () => api.post('/trending/refresh');

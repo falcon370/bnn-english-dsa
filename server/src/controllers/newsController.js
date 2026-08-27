@@ -2,10 +2,14 @@ const News = require('../models/News');
 const mongoose = require('mongoose');
 const { generateNewsFromTopic } = require('../services/trending');
 const { runFactCheckPipeline } = require('../services/factCheckService');
+const { EmbeddingClient } = require('../services/embeddingClient');
+
+const NEWS_LIST_FIELDS = 'title summary category imageUrl imageSource publishedAt isTrending primarySource primaryLink selectedSource';
+const NEWS_VECTOR_INDEX_NAME = process.env.NEWS_VECTOR_INDEX_NAME || 'news_embedding_vector_index';
 
 const getPublishedNews = async (req, res) => {
   try {
-    const { category, page: pageParam, limit: limitParam, q } = req.query;
+    const { category, page: pageParam, limit: limitParam, q, mode } = req.query;
 
     const page = Math.max(1, parseInt(pageParam) || 1);
     const limit = Math.min(30, Math.max(1, parseInt(limitParam) || 15));
@@ -40,6 +44,45 @@ const getPublishedNews = async (req, res) => {
       }
     }
 
+    // Semantic search: embed the query and rank by meaning via the Atlas
+    // vector index instead of substring matching. Not true skip-based
+    // pagination (page/pages are fixed at 1) — a deliberate simplification.
+    // Falls through to the regular keyword path below on any failure
+    // (embedding service down, index not created yet), so this can never
+    // break search.
+    if (mode === 'semantic' && q) {
+      try {
+        const embeddingClient = new EmbeddingClient();
+        const queryVector = await embeddingClient.embed(q);
+
+        const matchStage = { status: 'published' };
+        if (query.category) matchStage.category = query.category;
+
+        const news = await News.aggregate([
+          {
+            $vectorSearch: {
+              index: NEWS_VECTOR_INDEX_NAME,
+              path: 'embedding',
+              queryVector,
+              numCandidates: Math.max(limit * 20, 100),
+              limit,
+            },
+          },
+          { $match: matchStage },
+          {
+            $project: {
+              title: 1, summary: 1, category: 1, imageUrl: 1, imageSource: 1,
+              publishedAt: 1, isTrending: 1, primarySource: 1, primaryLink: 1, selectedSource: 1,
+            },
+          },
+        ]);
+
+        return res.json({ news, total: news.length, page: 1, pages: 1 });
+      } catch (semanticErr) {
+        console.warn('[Search] Semantic mode failed, falling back to keyword search:', semanticErr.message);
+      }
+    }
+
     // Category page or search: paginated fetch filtered by category/search
     if (category || q) {
       const [news, total] = await Promise.all([
@@ -47,7 +90,7 @@ const getPublishedNews = async (req, res) => {
           .sort({ publishedAt: -1 })
           .skip(skip)
           .limit(limit)
-          .select('title summary category imageUrl imageSource publishedAt isTrending primarySource primaryLink selectedSource')
+          .select(NEWS_LIST_FIELDS)
           .lean(),
         News.countDocuments(query),
       ]);
@@ -119,6 +162,75 @@ const getNewsDetail = async (req, res) => {
     return res.status(404).json({ message: 'News not found' });
   }
   res.json(news);
+};
+
+/**
+ * Related stories for a given article. Prefers semantic proximity via the
+ * Atlas vector index (News.embedding, populated at ingest time — see
+ * server/src/services/udaan/index.js); falls back to a plain category
+ * match — the same thing the client used to compute itself — if the story
+ * has no embedding yet or the vector search fails for any reason. Never
+ * errors out to an empty sidebar for a reason a reader would notice.
+ */
+const getRelatedNews = async (req, res) => {
+  const rawParam = req.params.id || '';
+  const objectId = rawParam.slice(0, 24);
+
+  if (!mongoose.Types.ObjectId.isValid(objectId)) {
+    return res.status(400).json({ message: 'Invalid news ID' });
+  }
+
+  const limit = Math.min(10, Math.max(1, parseInt(req.query.limit) || 5));
+
+  try {
+    const story = await News.findById(objectId).select('+embedding category tags').lean();
+    if (!story) {
+      return res.status(404).json({ message: 'News not found' });
+    }
+
+    const category = story.category || story.tags?.[0] || null;
+
+    if (story.embedding && story.embedding.length) {
+      try {
+        const results = await News.aggregate([
+          {
+            $vectorSearch: {
+              index: NEWS_VECTOR_INDEX_NAME,
+              path: 'embedding',
+              queryVector: story.embedding,
+              numCandidates: Math.max(limit * 20, 100),
+              limit: limit + 1, // +1 to absorb self-exclusion below
+            },
+          },
+          { $match: { status: 'published' } },
+          {
+            $project: {
+              title: 1, summary: 1, category: 1, imageUrl: 1, imageSource: 1,
+              publishedAt: 1, isTrending: 1, primarySource: 1, primaryLink: 1, selectedSource: 1,
+            },
+          },
+        ]);
+
+        const related = results.filter((r) => String(r._id) !== objectId).slice(0, limit);
+        if (related.length) {
+          return res.json({ related });
+        }
+      } catch (vectorErr) {
+        console.warn('[getRelatedNews] Vector search failed, falling back to category match:', vectorErr.message);
+      }
+    }
+
+    const fallback = await News.find({ status: 'published', category, _id: { $ne: objectId } })
+      .sort({ publishedAt: -1 })
+      .limit(limit)
+      .select(NEWS_LIST_FIELDS)
+      .lean();
+
+    res.json({ related: fallback });
+  } catch (err) {
+    console.error('getRelatedNews error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch related news' });
+  }
 };
 
 const publishNews = async (req, res) => {
@@ -345,6 +457,7 @@ module.exports = {
   getPublishedNews,
   getDraftNews,
   getNewsDetail,
+  getRelatedNews,
   publishNews,
   addComment,
   deleteComment,

@@ -3,6 +3,7 @@ const {
   getPublishedNews,
   getDraftNews,
   getNewsDetail,
+  getRelatedNews,
   publishNews,
   addComment,
   deleteComment,
@@ -33,6 +34,7 @@ router.get('/drafts', requireAuth(['admin']), getDraftNews);
 router.post('/generate', requireAuth(['admin']), generateNews);
 router.post('/editorial', requireAuth(['admin']), createEditorial);
 router.get('/:id', getNewsDetail);
+router.get('/:id/related', getRelatedNews);
 router.patch('/:id/publish', requireAuth(['admin']), publishNews);
 router.patch('/:id', requireAuth(['admin']), updateNews);
 router.post('/:id/react', requireAuth(), toggleReaction);

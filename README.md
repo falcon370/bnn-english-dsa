@@ -13,6 +13,9 @@
 
 - **Automated Content Pipeline**: Fetches top trending topics via SerpApi and Google Trends on a configurable cron schedule with multiple schedule profiles (1AM, regular, manual).
 - **AI News Synthesis**: Uses Google Gemini (with model fallback chain and multi-key rotation) to digest sources and generate unbiased summaries.
+- **Nine Editorial Verticals**: Politics, Business, Sports, Tech, World, Entertainment, Bolta Hai Bharat, Editorial, and **Udaan** — a constructive-news vertical for innovation/founder/grit stories. See [`docs/UDAAN_VERTICAL_SPEC.md`](docs/UDAAN_VERTICAL_SPEC.md).
+- **Ingest-Time Deduplication**: MinHash + banded LSH + Union-Find clustering catches syndicated near-duplicate stories before they reach Gemini, merging them into "story arcs" instead of wasting paid API calls.
+- **Semantic Search & Related Stories**: MongoDB Atlas `$vectorSearch` over article embeddings powers `?mode=semantic` search and per-article related-stories, falling back to keyword/category matching if the vector index or embedding service is unavailable.
 - **Semantic Image Matching**: Vector search on a curated politician/place image repository using sentence-transformers embeddings (384-dim, MiniLM-L6-v2).
 - **Daily ePaper**: Standalone Cloud Run job generates a Tabloid (11×17") PDF newspaper from live content with a newspaper-style 5-column layout.
 - **Social Posting**: GitHub Actions posts articles to Facebook every 15 minutes.
@@ -90,6 +93,19 @@ cd embedding-service && uvicorn app.main:app --reload
 cd epaper-printer
 NEWS_API_BASE_URL=http://localhost:5000 OUTPUT_DIR=./output_local SAVE_HTML=1 node src/index.js
 ```
+
+To run the backend against an isolated database instead of your main one, add a `server/.env.demo` with just `MONGO_URI` pointing at a separate database, then use `npm run dev:demo` instead of `npm run dev`.
+
+### Udaan setup (semantic search)
+
+Semantic search and related-stories require an Atlas vector index and populated embeddings — one-time setup, from `server/`:
+
+```bash
+npm run udaan:index:news            # creates the $vectorSearch index on News.embedding
+npm run udaan:backfill:embeddings   # backfills embeddings for pre-existing articles
+```
+
+New articles are embedded automatically at ingest. See [`docs/UDAAN_VERTICAL_SPEC.md`](docs/UDAAN_VERTICAL_SPEC.md) for the full architecture.
 
 ## Deployment
 

@@ -106,12 +106,16 @@ const fetchCategoryArticles = async (feed, limit = 8) => {
   const timeRange = feed.timeRange || 'qdr:h24';
   const freshnessHours = feed.freshnessHours || 36;
 
-  const response = await serpRequest({
+  // feed.country === null means worldwide (no gl restriction); undefined defaults to India.
+  const params = {
     engine: 'google',
     tbm: 'nws',
-    hl: feed.lang || 'en', gl: feed.country || 'in',
+    hl: feed.lang || 'en',
     q: feed.query, num: limit, tbs: `${timeRange},sbd:1`,
-  });
+  };
+  if (feed.country !== null) params.gl = feed.country || 'in';
+
+  const response = await serpRequest(params);
 
   const articles = (response.news_results || [])
     .map(item => ({

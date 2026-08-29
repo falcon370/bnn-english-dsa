@@ -47,7 +47,8 @@ const CATEGORY_FEEDS = [
   // "innovation/founder/grit" query returns a thin candidate pool on a
   // 24h window (see docs/UDAAN_VERTICAL_SPEC.md §4.3) — 7 days multiplies
   // it without adding a new data source.
-  { id: 'udaan',           topic: 'Udaan',                query: 'India innovation grassroots founder social entrepreneur', category: 'Udaan', tags: ['innovation', 'motivation', 'grit'], timeRange: 'qdr:d7', freshnessHours: 168 },
+  // country: null = worldwide (no gl restriction); hl stays 'en' so results are still English-language.
+  { id: 'udaan',           topic: 'Udaan',                query: 'innovation grassroots founder social entrepreneur', category: 'Udaan', tags: ['innovation', 'motivation', 'grit'], timeRange: 'qdr:d7', freshnessHours: 168, country: null },
 ];
 
 // Google Trends category ID → human-readable name
